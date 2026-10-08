@@ -1,24 +1,22 @@
 using CardShop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using CardShop.Application;
+using CardShop.Api;
+using CardShop.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-var connectionString =
-    builder.Configuration.GetConnectionString("CardShopDatabase")
-    ?? throw new InvalidOperationException(
-        "Connection string 'CardShopDatabase' was not found.");
-
-builder.Services.AddDbContext<CardShopDbContext>(options =>
-    options.UseSqlServer(connectionString));
-
-builder.Services.AddControllers();
+builder.Services.AddApiServices();
+builder.Services.AddApplicationServices();
+builder.Services.AddInfrastructureServices(builder.Configuration);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
