@@ -1,4 +1,5 @@
-﻿using CardShop.Application.DTOs.Products;
+﻿using CardShop.Application.Common;
+using CardShop.Application.DTOs.Products;
 using CardShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,19 +16,17 @@ namespace CardShop.Api.Controllers
             _productService = productService;
         }
 
-        [HttpPost]
-        public async Task<ActionResult<ProductResponse>> Create(
-            [FromBody] CreateProductRequest request,
+        [HttpGet]
+        public async Task<ActionResult<PagedResult<ProductResponse>>> Search(
+            [FromQuery] SearchProductsQuery query,
             CancellationToken cancellationToken)
         {
-            var product = await _productService.CreateProductAsync(
-                request,
-                cancellationToken);
+            var result = await _productService.SearchAsync(
+                query,
+                includeInactive: false,
+                cancellationToken: cancellationToken);
 
-            return CreatedAtAction(
-                nameof(GetById),
-                new { id = product.Id },
-                product);
+            return Ok(result);
         }
 
         [HttpGet("{id:int}")]
@@ -35,9 +34,10 @@ namespace CardShop.Api.Controllers
             int id,
             CancellationToken cancellationToken)
         {
-            var product = await _productService.GetProductByIdAsync(
+            var product = await _productService.GetByIdAsync(
                 id,
-                cancellationToken);
+                includeInactive: false,
+                cancellationToken: cancellationToken);
 
             if (product is null)
             {

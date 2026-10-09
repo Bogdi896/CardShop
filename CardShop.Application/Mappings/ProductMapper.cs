@@ -18,6 +18,16 @@ namespace CardShop.Application.Mappings
             };
         }
 
+        public static void ToEntity(
+            UpdateProductRequest request,
+            Product product)
+        {
+            product.Name = request.Name.Trim();
+            product.Description = request.Description.Trim();
+            product.Type = request.Type;
+            product.Price = request.Price;
+        }
+
         public static ProductResponse ToDto(Product product)
         {
             return new ProductResponse
