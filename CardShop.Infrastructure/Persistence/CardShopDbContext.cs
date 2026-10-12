@@ -1,4 +1,5 @@
-﻿using CardShop.Domain.Models;
+﻿
+using CardShop.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CardShop.Infrastructure.Persistence
@@ -12,7 +13,13 @@ namespace CardShop.Infrastructure.Persistence
         }
 
         public DbSet<Product> Products => Set<Product>();
+
+        public DbSet<Cart> Carts => Set<Cart>();
+
+        public DbSet<CartItem> CartItems => Set<CartItem>();
+
         public DbSet<Order> Orders => Set<Order>();
+
         public DbSet<OrderItem> OrderItems => Set<OrderItem>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
