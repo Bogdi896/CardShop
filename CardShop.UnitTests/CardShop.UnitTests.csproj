@@ -19,8 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CardShop.Api\CardShop.Api.csproj" />
     <ProjectReference Include="..\CardShop.Application\CardShop.Application.csproj" />
     <ProjectReference Include="..\CardShop.Domain\CardShop.Domain.csproj" />
+    <ProjectReference Include="..\CardShop.Infrastructure\CardShop.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
