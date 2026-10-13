@@ -1,8 +1,9 @@
 ﻿using CardShop.Application.DTOs.Products;
 using CardShop.Application.Interfaces.Services;
 using CardShop.Application.Services;
-using CardShop.Application.Validators;
-using CardShop.Application.Validators.Products;
+using CardShop.Application.Validators.Product;
+using CardShop.Application.Validators.Auth;
+using CardShop.Application.DTOs.Auth;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -30,6 +31,14 @@ namespace CardShop.Application
             services.AddScoped<
                 IValidator<SearchProductsQuery>,
                 SearchProductsQueryValidator>();
+
+            services.AddScoped<
+                IValidator<RegisterRequest>,
+                RegisterRequestValidator>();
+
+            services.AddScoped<
+                IValidator<LoginRequest>,
+                LoginRequestValidator>();
 
             return services;
         }

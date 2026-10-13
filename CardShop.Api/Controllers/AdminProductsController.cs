@@ -2,11 +2,14 @@
 using CardShop.Application.DTOs.Products;
 using CardShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using CardShop.Application.Common.Constants;
 
 namespace CardShop.Api.Controllers
 {
     [ApiController]
     [Route("admin/products")]
+    [Authorize(Roles = RoleNames.Admin)]
     public class AdminProductsController : ControllerBase
     {
         private readonly IProductService _productService;

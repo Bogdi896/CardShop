@@ -1,10 +1,11 @@
-﻿
-using CardShop.Domain.Models;
+﻿using CardShop.Domain.Models;
+using CardShop.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace CardShop.Infrastructure.Persistence
 {
-    public class CardShopDbContext : DbContext
+    public class CardShopDbContext : IdentityDbContext<ApplicationUser>
     {
         public CardShopDbContext(
             DbContextOptions<CardShopDbContext> options)

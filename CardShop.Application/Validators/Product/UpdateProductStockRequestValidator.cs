@@ -1,7 +1,7 @@
 ﻿using CardShop.Application.DTOs.Products;
 using FluentValidation;
 
-namespace CardShop.Application.Validators
+namespace CardShop.Application.Validators.Product
 {
     public class UpdateProductStockRequestValidator
         : AbstractValidator<UpdateProductStockRequest>

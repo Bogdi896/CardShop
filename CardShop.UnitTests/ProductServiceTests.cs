@@ -2,7 +2,7 @@
 using CardShop.Application.Interfaces.Repositories;
 using CardShop.Application.Services;
 using CardShop.Application.Validators;
-using CardShop.Application.Validators.Products;
+using CardShop.Application.Validators.Product;
 using CardShop.Domain.Enums;
 using CardShop.Domain.Models;
 using FluentAssertions;

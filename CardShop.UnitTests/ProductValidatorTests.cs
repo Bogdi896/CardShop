@@ -1,7 +1,6 @@
 ﻿
 using CardShop.Application.DTOs.Products;
-using CardShop.Application.Validators;
-using CardShop.Application.Validators.Products;
+using CardShop.Application.Validators.Product;
 using CardShop.Domain.Enums;
 using FluentAssertions;
 using Xunit;
