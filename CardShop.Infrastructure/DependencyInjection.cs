@@ -52,6 +52,7 @@ namespace CardShop.Infrastructure
 
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IProductRepository, ProductRepository>();
+            services.AddScoped<ICartRepository, CartRepository>();
 
             return services;
         }

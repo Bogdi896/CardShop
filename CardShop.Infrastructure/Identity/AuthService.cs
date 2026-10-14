@@ -1,11 +1,12 @@
-﻿using CardShop.Application.Common.Exceptions;
+﻿
+using CardShop.Application.Common.Constants;
+using CardShop.Application.Common.Exceptions;
 using CardShop.Application.DTOs.Auth;
 using CardShop.Application.Interfaces.Services;
-using CardShop.Infrastructure.Authentication;
+using CardShop.Domain.Models;
+using CardShop.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Identity;
-using CardShop.Application.Common.Constants;
-using CardShop.Infrastructure.Persistence;
 
 namespace CardShop.Infrastructure.Identity;
 
@@ -33,7 +34,6 @@ public class AuthService : IAuthService
         _loginValidator = loginValidator;
         _context = context;
     }
-
 
     public async Task<AuthResponse> RegisterAsync(
         RegisterRequest request,
@@ -73,6 +73,17 @@ public class AuthService : IAuthService
                 roleResult.Errors.Select(e => e.Description));
         }
 
+        // Create the customer's permanent empty cart.
+        var cart = new Cart
+        {
+            UserId = user.Id
+        };
+
+        _context.Carts.Add(cart);
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Commit user creation, role assignment and cart together.
         await transaction.CommitAsync(cancellationToken);
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -82,7 +93,6 @@ public class AuthService : IAuthService
             user.Email!,
             roles);
     }
-
 
     public async Task<AuthResponse?> LoginAsync(
         LoginRequest request,
@@ -100,10 +110,11 @@ public class AuthService : IAuthService
             return null;
         }
 
-        var signInResult = await _signInManager.CheckPasswordSignInAsync(
-    user,
-    request.Password,
-    lockoutOnFailure: true);
+        var signInResult =
+            await _signInManager.CheckPasswordSignInAsync(
+                user,
+                request.Password,
+                lockoutOnFailure: true);
 
         if (!signInResult.Succeeded)
         {

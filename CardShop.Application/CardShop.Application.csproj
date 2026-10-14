@@ -18,8 +18,4 @@
     <ProjectReference Include="..\CardShop.Domain\CardShop.Domain.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="DTOs\Carts\" />
-  </ItemGroup>
-
 </Project>

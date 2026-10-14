@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace CardShop.Application.DTOs.Carts;
 
-namespace CardShop.Application.DTOs.Carts
+public class UpdateCartItemRequest
 {
-    internal class UpdateCartRequest
-    {
-    }
+    public int Quantity { get; set; }
 }
