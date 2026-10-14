@@ -11,11 +11,15 @@ namespace CardShop.Domain.Models
     {
         public int Id { get; set; }
 
+        public Guid CheckoutId { get; set; }
+
         public string UserId { get; set; } = string.Empty;
 
         public OrderStatus Status { get; set; } = OrderStatus.Pending;
 
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+        public decimal TotalAmount { get; set; }
 
         public List<OrderItem> Items { get; set; } = new();
     }

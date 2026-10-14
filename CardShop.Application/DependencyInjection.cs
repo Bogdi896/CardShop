@@ -1,13 +1,15 @@
-﻿using CardShop.Application.DTOs.Products;
+﻿using CardShop.Application.DTOs.Auth;
+using CardShop.Application.DTOs.Carts;
+using CardShop.Application.DTOs.Orders;
+using CardShop.Application.DTOs.Products;
 using CardShop.Application.Interfaces.Services;
 using CardShop.Application.Services;
 using CardShop.Application.Validators.Auth;
-using CardShop.Application.Validators.Product;
 using CardShop.Application.Validators.Carts;
-using CardShop.Application.DTOs.Auth;
+using CardShop.Application.Validators.Orders;
+using CardShop.Application.Validators.Product;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
-using CardShop.Application.DTOs.Carts;
 
 namespace CardShop.Application
 {
@@ -50,6 +52,16 @@ namespace CardShop.Application
             services.AddScoped<
                 IValidator<UpdateCartItemRequest>,
                 UpdateCartItemRequestValidator>();
+
+            services.AddScoped<IOrderService, OrderService>();
+
+            services.AddScoped<
+                IValidator<CheckoutRequest>,
+                CheckoutRequestValidator>();
+
+            services.AddScoped<
+                IValidator<SearchOrdersQuery>,
+                SearchOrdersQueryValidator>();
 
             return services;
         }

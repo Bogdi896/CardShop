@@ -13,6 +13,8 @@ namespace CardShop.Domain.Models
         public int OrderId { get; set; }
         public Order Order { get; set; } = null!;
 
+        public string ProductName { get; set; } = string.Empty;
+
         public int ProductId { get; set; }
         public Product Product { get; set; } = null!;
 
