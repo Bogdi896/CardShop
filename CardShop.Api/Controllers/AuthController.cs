@@ -15,6 +15,7 @@ namespace CardShop.Api.Controllers
         {
             _authService = authService;
         }
+
         [AllowAnonymous]
         [HttpPost("register")]
         public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
@@ -24,11 +25,27 @@ namespace CardShop.Api.Controllers
                 var response = await _authService.RegisterAsync(request, cancellationToken);
                 return Ok(response);
             }
+            catch (FluentValidation.ValidationException exception)
+            {
+                var errors = exception.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray());
+
+                return ValidationProblem(
+                    new ValidationProblemDetails(errors)
+                    {
+                        Title = "Validation failed.",
+                        Status = StatusCodes.Status400BadRequest
+                    });
+            }
             catch (RegistrationException exception)
             {
                 return BadRequest(new { Errors = exception.Errors });
             }
         }
+
         [AllowAnonymous]
         [HttpPost("login")]
         public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)

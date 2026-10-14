@@ -110,9 +110,8 @@ namespace CardShop.Api
             new JsonStringEnumConverter(allowIntegerValues: false));
     });
 
-            services.AddProblemDetails();
-
             services.AddExceptionHandler<GlobalExceptionHandler>();
+            services.AddProblemDetails();
 
             return services;
         }

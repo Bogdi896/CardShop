@@ -1,10 +1,10 @@
-﻿
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CardShop.Application.DTOs.Products;
 using CardShop.Domain.Enums;
+using CardShop.IntegrationTests.Helpers;
 using CardShop.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Xunit;
@@ -23,6 +23,10 @@ public class ProductsControllerTests
 
         using var client = factory.CreateClient();
 
+        await AuthenticationHelper.AuthenticateAsAdminAsync(
+            client,
+            factory);
+
         var request = new CreateProductRequest
         {
             Name = "Duel Masters Booster Box",
@@ -32,10 +36,11 @@ public class ProductsControllerTests
             AvailableQuantity = 10
         };
 
-        // Act
         var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        jsonOptions.Converters.Add(new JsonStringEnumConverter());
+        jsonOptions.Converters.Add(
+            new JsonStringEnumConverter(allowIntegerValues: false));
 
+        // Act
         var response = await client.PostAsJsonAsync(
             "/admin/products",
             request,
@@ -54,7 +59,7 @@ public class ProductsControllerTests
         product.AvailableQuantity.Should().Be(10);
         product.IsActive.Should().BeTrue();
 
-        // Verify the created product can be retrieved.
+        // Verify the product is accessible through the public endpoint.
         var getResponse = await client.GetAsync(
             $"/products/{product.Id}");
 

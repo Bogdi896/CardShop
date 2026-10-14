@@ -1,4 +1,3 @@
-using CardShop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using CardShop.Application;
 using CardShop.Api;
@@ -16,11 +15,13 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
-await IdentitySeeder.SeedAsync(
-    app.Services,
-    app.Configuration,
-    app.Environment);
-app.UseExceptionHandler();
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    await IdentitySeeder.SeedAsync(
+        app.Services,
+        app.Configuration,
+        app.Environment);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -28,6 +29,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseExceptionHandler();
 
 app.UseHttpsRedirection();
 
