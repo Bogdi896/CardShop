@@ -2,6 +2,7 @@
 using CardShop.Application.Common.Exceptions;
 using CardShop.Application.DTOs.Carts;
 using CardShop.Application.Interfaces.Repositories;
+using CardShop.Application.Interfaces.Services;
 using CardShop.Application.Services;
 using CardShop.Application.Validators.Carts;
 using CardShop.Domain.Models;
@@ -17,14 +18,49 @@ public class CartServiceTests
     private const string UserId = "user-123";
 
     private readonly Mock<ICartRepository> _repositoryMock;
+    private readonly Mock<ICartOperationExecutor> _executorMock;
     private readonly CartService _service;
 
     public CartServiceTests()
     {
         _repositoryMock = new Mock<ICartRepository>();
+        _executorMock = new Mock<ICartOperationExecutor>();
+
+        // Execute the callback using our mocked repository.
+        // The real executor handles transactions and locking.
+        _executorMock
+            .Setup(executor => executor.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<CartResponse>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((
+                string userId,
+                Func<ICartRepository, CancellationToken,
+                    Task<CartResponse>> operation,
+                CancellationToken token) =>
+                    operation(_repositoryMock.Object, token));
+
+        _executorMock
+            .Setup(executor => executor.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<bool>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((
+                string userId,
+                Func<ICartRepository, CancellationToken,
+                    Task<bool>> operation,
+                CancellationToken token) =>
+                    operation(_repositoryMock.Object, token));
 
         _service = new CartService(
             _repositoryMock.Object,
+            _executorMock.Object,
             new AddCartItemRequestValidator(),
             new UpdateCartItemRequestValidator());
     }
@@ -181,13 +217,13 @@ public class CartServiceTests
         SetupCart(cart);
         SetupProduct(product);
 
-        var request = new AddCartItemRequest
-        {
-            ProductId = product.Id,
-            Quantity = 2
-        };
-
-        var result = await _service.AddItemAsync(UserId, request);
+        var result = await _service.AddItemAsync(
+            UserId,
+            new AddCartItemRequest
+            {
+                ProductId = product.Id,
+                Quantity = 2
+            });
 
         result.Items.Should().ContainSingle();
         result.TotalQuantity.Should().Be(2);
@@ -208,17 +244,16 @@ public class CartServiceTests
         SetupCart(cart);
         SetupProduct(product);
 
-        var request = new AddCartItemRequest
-        {
-            ProductId = product.Id,
-            Quantity = 2
-        };
-
-        var result = await _service.AddItemAsync(UserId, request);
+        var result = await _service.AddItemAsync(
+            UserId,
+            new AddCartItemRequest
+            {
+                ProductId = product.Id,
+                Quantity = 2
+            });
 
         result.Items.Should().ContainSingle();
         result.TotalQuantity.Should().Be(5);
-
         cart.Items.Single().Quantity.Should().Be(5);
 
         VerifySavedOnce();
@@ -296,9 +331,7 @@ public class CartServiceTests
     public async Task AddItem_WhenProductInactive_ShouldThrowCartException()
     {
         var product = CreateProduct(isActive: false);
-        var cart = CreateCart();
-
-        SetupCart(cart);
+        SetupCart(CreateCart());
         SetupProduct(product);
 
         Func<Task> act = () => _service.AddItemAsync(
@@ -317,8 +350,7 @@ public class CartServiceTests
     [Fact]
     public async Task AddItem_WhenProductDoesNotExist_ShouldThrowCartException()
     {
-        var cart = CreateCart();
-        SetupCart(cart);
+        SetupCart(CreateCart());
 
         Func<Task> act = () => _service.AddItemAsync(
             UserId,
@@ -438,8 +470,7 @@ public class CartServiceTests
     [Fact]
     public async Task UpdateItem_WhenProductNotInCart_ShouldThrow()
     {
-        var cart = CreateCart();
-        SetupCart(cart);
+        SetupCart(CreateCart());
 
         Func<Task> act = () => _service.UpdateItemAsync(
             UserId,
@@ -458,9 +489,7 @@ public class CartServiceTests
     public async Task UpdateItem_WhenProductInactive_ShouldThrow()
     {
         var product = CreateProduct(isActive: false);
-        var cart = CreateCart(2, product);
-
-        SetupCart(cart);
+        SetupCart(CreateCart(2, product));
         SetupProduct(product);
 
         Func<Task> act = () => _service.UpdateItemAsync(
@@ -520,7 +549,6 @@ public class CartServiceTests
     {
         var product = CreateProduct();
         var cart = CreateCart(2, product);
-
         SetupCart(cart);
 
         var item = cart.Items.Single();
@@ -541,8 +569,7 @@ public class CartServiceTests
     [Fact]
     public async Task RemoveItem_WhenItemDoesNotExist_ShouldReturnFalse()
     {
-        var cart = CreateCart();
-        SetupCart(cart);
+        SetupCart(CreateCart());
 
         var result = await _service.RemoveItemAsync(
             UserId,
@@ -611,5 +638,128 @@ public class CartServiceTests
         await act.Should().ThrowAsync<CartException>();
 
         VerifyNeverSaved();
+    }
+
+    // =========================================================
+    // EXECUTOR BEHAVIOR
+    // =========================================================
+
+    [Fact]
+    public async Task AddItem_ShouldUseExecutorWithCorrectUserId()
+    {
+        var product = CreateProduct();
+        SetupCart(CreateCart());
+        SetupProduct(product);
+
+        await _service.AddItemAsync(
+            UserId,
+            new AddCartItemRequest
+            {
+                ProductId = product.Id,
+                Quantity = 1
+            });
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                UserId,
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<CartResponse>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task UpdateItem_ShouldUseExecutorWithCorrectUserId()
+    {
+        var product = CreateProduct();
+        SetupCart(CreateCart(2, product));
+        SetupProduct(product);
+
+        await _service.UpdateItemAsync(
+            UserId,
+            product.Id,
+            new UpdateCartItemRequest
+            {
+                Quantity = 3
+            });
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                UserId,
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<CartResponse>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task RemoveItem_ShouldUseExecutorWithCorrectUserId()
+    {
+        var product = CreateProduct();
+        SetupCart(CreateCart(2, product));
+
+        await _service.RemoveItemAsync(
+            UserId,
+            product.Id);
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                UserId,
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<bool>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task ClearCart_ShouldUseExecutorWithCorrectUserId()
+    {
+        SetupCart(CreateCart(2));
+
+        await _service.ClearCartAsync(UserId);
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                UserId,
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<bool>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task GetCart_ShouldNotUseExecutor()
+    {
+        SetupCart(CreateCart());
+
+        await _service.GetCartAsync(UserId);
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<CartResponse>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never());
+
+        _executorMock.Verify(
+            executor => executor.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<Func<
+                    ICartRepository,
+                    CancellationToken,
+                    Task<bool>>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never());
     }
 }

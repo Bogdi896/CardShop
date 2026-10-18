@@ -45,8 +45,35 @@ public class CartRepository : ICartRepository
         CancellationToken cancellationToken = default)
     {
         return await _context.Products
+            .AsNoTracking()
             .FirstOrDefaultAsync(
                 product => product.Id == productId,
+                cancellationToken);
+    }
+
+    public async Task<bool> LockCartAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_context.Database.IsSqlServer())
+        {
+            // The caller must already have an active transaction.
+            // UPDLOCK + HOLDLOCK matches the checkout lock protocol.
+            var cart = await _context.Carts
+                .FromSqlInterpolated(
+                    $@"SELECT * FROM Carts WITH (UPDLOCK, HOLDLOCK)
+                       WHERE UserId = {userId}")
+                .AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken);
+
+            return cart is not null;
+        }
+
+        // SQLite integration-test fallback.
+        // SQLite does not support SQL Server locking hints.
+        return await _context.Carts
+            .AnyAsync(
+                cart => cart.UserId == userId,
                 cancellationToken);
     }
 

@@ -20,6 +20,10 @@ public class OrderRepository : IOrderRepository
         _context = context;
     }
 
+    // =========================================================
+    // GET ORDER BY ID
+    // =========================================================
+
     public async Task<Order?> GetByIdAsync(
         int id,
         CancellationToken cancellationToken = default)
@@ -31,6 +35,10 @@ public class OrderRepository : IOrderRepository
                 order => order.Id == id,
                 cancellationToken);
     }
+
+    // =========================================================
+    // GET ORDER BY CHECKOUT ID
+    // =========================================================
 
     public async Task<Order?> GetByCheckoutIdAsync(
         string userId,
@@ -45,6 +53,10 @@ public class OrderRepository : IOrderRepository
                          order.CheckoutId == checkoutId,
                 cancellationToken);
     }
+
+    // =========================================================
+    // SEARCH ORDERS
+    // =========================================================
 
     public async Task<PagedResult<Order>> SearchAsync(
         SearchOrdersQuery query,
@@ -69,15 +81,33 @@ public class OrderRepository : IOrderRepository
         var totalCount = await orders.CountAsync(
             cancellationToken);
 
-        var skip = checked((query.Page - 1) * query.PageSize);
+        var skip = checked(
+            (query.Page - 1) * query.PageSize);
 
-        var items = await orders
-            .Include(order => order.Items)
-            .OrderByDescending(order => order.CreatedAt)
-            .ThenByDescending(order => order.Id)
-            .Skip(skip)
-            .Take(query.PageSize)
-            .ToListAsync(cancellationToken);
+        List<Order> items;
+
+        // SQLite does not support DateTimeOffset ordering
+        // in the same way SQL Server does.
+        if (_context.Database.ProviderName ==
+            "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            items = await orders
+                .Include(order => order.Items)
+                .OrderByDescending(order => order.Id)
+                .Skip(skip)
+                .Take(query.PageSize)
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            items = await orders
+                .Include(order => order.Items)
+                .OrderByDescending(order => order.CreatedAt)
+                .ThenByDescending(order => order.Id)
+                .Skip(skip)
+                .Take(query.PageSize)
+                .ToListAsync(cancellationToken);
+        }
 
         return new PagedResult<Order>
         {
@@ -87,6 +117,10 @@ public class OrderRepository : IOrderRepository
             PageSize = query.PageSize
         };
     }
+
+    // =========================================================
+    // GET CUSTOMER CART
+    // =========================================================
 
     public async Task<Cart?> GetCartAsync(
         string userId,
@@ -101,14 +135,16 @@ public class OrderRepository : IOrderRepository
                 cancellationToken);
     }
 
+    // =========================================================
+    // LOCK CART FOR CHECKOUT
+    // =========================================================
+
     public async Task LockCartAsync(
         string userId,
         CancellationToken cancellationToken = default)
     {
         if (_context.Database.IsSqlServer())
         {
-            // UPDLOCK and HOLDLOCK keep the cart row locked
-            // until the transaction completes.
             var cart = await _context.Carts
                 .FromSqlInterpolated(
                     $@"SELECT * FROM Carts WITH (UPDLOCK, HOLDLOCK)
@@ -124,8 +160,7 @@ public class OrderRepository : IOrderRepository
         }
         else
         {
-            // SQLite test fallback. Its write-locking behavior
-            // differs from SQL Server.
+            // SQLite fallback for integration tests.
             var exists = await _context.Carts
                 .AnyAsync(
                     cart => cart.UserId == userId,
@@ -138,6 +173,10 @@ public class OrderRepository : IOrderRepository
             }
         }
     }
+
+    // =========================================================
+    // LOCK ORDER FOR STATUS CHANGES
+    // =========================================================
 
     public async Task LockOrderAsync(
         int orderId,
@@ -160,6 +199,10 @@ public class OrderRepository : IOrderRepository
         }
     }
 
+    // =========================================================
+    // ATOMIC STOCK DEDUCTION
+    // =========================================================
+
     public async Task<bool> DeductStockAsync(
         int productId,
         int quantity,
@@ -178,6 +221,10 @@ public class OrderRepository : IOrderRepository
 
         return affectedRows == 1;
     }
+
+    // =========================================================
+    // RESTORE STOCK AFTER CANCELLATION
+    // =========================================================
 
     public async Task RestoreStockAsync(
         int productId,
@@ -199,6 +246,10 @@ public class OrderRepository : IOrderRepository
         }
     }
 
+    // =========================================================
+    // UPDATE ORDER STATUS
+    // =========================================================
+
     public async Task<bool> SetOrderStatusAsync(
         int orderId,
         OrderStatus expectedStatus,
@@ -218,10 +269,18 @@ public class OrderRepository : IOrderRepository
         return affectedRows == 1;
     }
 
+    // =========================================================
+    // ADD ORDER
+    // =========================================================
+
     public void Add(Order order)
     {
         _context.Orders.Add(order);
     }
+
+    // =========================================================
+    // CLEAR CART
+    // =========================================================
 
     public void ClearCart(Cart cart)
     {
@@ -234,11 +293,19 @@ public class OrderRepository : IOrderRepository
                 itemIds.Contains(item.Id)));
     }
 
+    // =========================================================
+    // SAVE CHANGES
+    // =========================================================
+
     public async Task SaveChangesAsync(
         CancellationToken cancellationToken = default)
     {
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    // =========================================================
+    // BEGIN DATABASE TRANSACTION
+    // =========================================================
 
     public async Task<IOrderTransaction> BeginTransactionAsync(
         CancellationToken cancellationToken = default)
@@ -250,6 +317,10 @@ public class OrderRepository : IOrderRepository
 
         return new OrderTransaction(transaction);
     }
+
+    // =========================================================
+    // TRANSACTION WRAPPER
+    // =========================================================
 
     private sealed class OrderTransaction : IOrderTransaction
     {

@@ -14,15 +14,18 @@ namespace CardShop.Application.Services;
 public class OrderService : IOrderService
 {
     private readonly IOrderRepository _orderRepository;
+    private readonly ICheckoutExecutor _checkoutExecutor;
     private readonly IValidator<CheckoutRequest> _checkoutValidator;
     private readonly IValidator<SearchOrdersQuery> _searchValidator;
 
     public OrderService(
         IOrderRepository orderRepository,
+        ICheckoutExecutor checkoutExecutor,
         IValidator<CheckoutRequest> checkoutValidator,
         IValidator<SearchOrdersQuery> searchValidator)
     {
         _orderRepository = orderRepository;
+        _checkoutExecutor = checkoutExecutor;
         _checkoutValidator = checkoutValidator;
         _searchValidator = searchValidator;
     }
@@ -36,45 +39,42 @@ public class OrderService : IOrderService
             request,
             cancellationToken);
 
-        // A completed checkout with the same key is returned
-        // rather than processed again.
-        var existingOrder =
-            await _orderRepository.GetByCheckoutIdAsync(
+        return await _checkoutExecutor.ExecuteCheckoutAsync(
+            userId,
+            request.CheckoutId,
+            (repository, token) => CheckoutCoreAsync(
+                repository,
                 userId,
-                request.CheckoutId,
-                cancellationToken);
+                request,
+                token),
+            cancellationToken);
+    }
+
+    private static async Task<OrderResponse> CheckoutCoreAsync(
+        IOrderRepository repository,
+        string userId,
+        CheckoutRequest request,
+        CancellationToken cancellationToken)
+    {
+        await repository.LockCartAsync(
+            userId,
+            cancellationToken);
+
+        var existingOrder = await repository.GetByCheckoutIdAsync(
+            userId,
+            request.CheckoutId,
+            cancellationToken);
 
         if (existingOrder is not null)
         {
             return OrderMapper.ToDto(existingOrder);
         }
 
-        await using var transaction =
-            await _orderRepository.BeginTransactionAsync(
-                cancellationToken);
-
-        // Serialize competing checkouts for this user's cart.
-        await _orderRepository.LockCartAsync(
+        var cart = await repository.GetCartAsync(
             userId,
             cancellationToken);
 
-        // Check again after acquiring the lock.
-        existingOrder =
-            await _orderRepository.GetByCheckoutIdAsync(
-                userId,
-                request.CheckoutId,
-                cancellationToken);
-
-        if (existingOrder is not null)
-        {
-            return OrderMapper.ToDto(existingOrder);
-        }
-
-        var cart = await _orderRepository.GetCartAsync(
-            userId,
-            cancellationToken);
-
-        if (cart is null || !cart.Items.Any())
+        if (cart is null || cart.Items.Count == 0)
         {
             throw new OrderException(
                 "Cannot checkout an empty cart.");
@@ -88,8 +88,6 @@ public class OrderService : IOrderService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        // Always process products in a stable order to reduce
-        // the likelihood of database deadlocks.
         foreach (var cartItem in cart.Items.OrderBy(
             item => item.ProductId))
         {
@@ -103,8 +101,7 @@ public class OrderService : IOrderService
                     "The cart contains an unavailable product.");
             }
 
-            // The database checks and deducts stock atomically.
-            var deducted = await _orderRepository.DeductStockAsync(
+            var deducted = await repository.DeductStockAsync(
                 product.Id,
                 cartItem.Quantity,
                 cancellationToken);
@@ -127,14 +124,10 @@ public class OrderService : IOrderService
         order.TotalAmount = order.Items.Sum(
             item => item.UnitPrice * item.Quantity);
 
-        _orderRepository.Add(order);
+        repository.Add(order);
+        repository.ClearCart(cart);
 
-        _orderRepository.ClearCart(cart);
-
-        await _orderRepository.SaveChangesAsync(
-            cancellationToken);
-
-        await transaction.CommitAsync(cancellationToken);
+        await repository.SaveChangesAsync(cancellationToken);
 
         return OrderMapper.ToDto(order);
     }
@@ -180,26 +173,35 @@ public class OrderService : IOrderService
             Items = result.Items
                 .Select(OrderMapper.ToDto)
                 .ToList(),
-
             TotalCount = result.TotalCount,
             Page = result.Page,
             PageSize = result.PageSize
         };
     }
 
-    public async Task<bool> ShipAsync(
+    public Task<bool> ShipAsync(
         int orderId,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction =
-            await _orderRepository.BeginTransactionAsync(
-                cancellationToken);
-
-        await _orderRepository.LockOrderAsync(
-            orderId,
+        return _checkoutExecutor.ExecuteAsync(
+            (repository, token) => ShipCoreAsync(
+                repository,
+                orderId,
+                token),
             cancellationToken);
+    }
 
-        var order = await _orderRepository.GetByIdAsync(
+    private static async Task<bool> ShipCoreAsync(
+        IOrderRepository repository,
+        int orderId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await repository.BeginTransactionAsync(cancellationToken);
+
+        await repository.LockOrderAsync(orderId, cancellationToken);
+
+        var order = await repository.GetByIdAsync(
             orderId,
             cancellationToken);
 
@@ -214,7 +216,7 @@ public class OrderService : IOrderService
                 "Only pending orders can be shipped.");
         }
 
-        var updated = await _orderRepository.SetOrderStatusAsync(
+        var updated = await repository.SetOrderStatusAsync(
             orderId,
             OrderStatus.Pending,
             OrderStatus.Shipped,
@@ -231,19 +233,29 @@ public class OrderService : IOrderService
         return true;
     }
 
-    public async Task<bool> CancelAsync(
+    public Task<bool> CancelAsync(
         int orderId,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction =
-            await _orderRepository.BeginTransactionAsync(
-                cancellationToken);
-
-        await _orderRepository.LockOrderAsync(
-            orderId,
+        return _checkoutExecutor.ExecuteAsync(
+            (repository, token) => CancelCoreAsync(
+                repository,
+                orderId,
+                token),
             cancellationToken);
+    }
 
-        var order = await _orderRepository.GetByIdAsync(
+    private static async Task<bool> CancelCoreAsync(
+        IOrderRepository repository,
+        int orderId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction =
+            await repository.BeginTransactionAsync(cancellationToken);
+
+        await repository.LockOrderAsync(orderId, cancellationToken);
+
+        var order = await repository.GetByIdAsync(
             orderId,
             cancellationToken);
 
@@ -258,7 +270,7 @@ public class OrderService : IOrderService
                 "Only pending orders can be cancelled.");
         }
 
-        var updated = await _orderRepository.SetOrderStatusAsync(
+        var updated = await repository.SetOrderStatusAsync(
             orderId,
             OrderStatus.Pending,
             OrderStatus.Cancelled,
@@ -273,7 +285,7 @@ public class OrderService : IOrderService
         foreach (var item in order.Items.OrderBy(
             item => item.ProductId))
         {
-            await _orderRepository.RestoreStockAsync(
+            await repository.RestoreStockAsync(
                 item.ProductId,
                 item.Quantity,
                 cancellationToken);

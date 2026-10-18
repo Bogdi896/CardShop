@@ -7,6 +7,8 @@ using CardShop.Domain.Models;
 using CardShop.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CardShop.Infrastructure.Identity;
 
@@ -16,6 +18,7 @@ public class AuthService : IAuthService
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ITokenService _tokenService;
     private readonly CardShopDbContext _context;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IValidator<RegisterRequest> _registerValidator;
     private readonly IValidator<LoginRequest> _loginValidator;
 
@@ -25,7 +28,8 @@ public class AuthService : IAuthService
         ITokenService tokenService,
         IValidator<RegisterRequest> registerValidator,
         IValidator<LoginRequest> loginValidator,
-        CardShopDbContext context)
+        CardShopDbContext context,
+        IServiceScopeFactory scopeFactory)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -33,7 +37,12 @@ public class AuthService : IAuthService
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
         _context = context;
+        _scopeFactory = scopeFactory;
     }
+
+    // =========================================================
+    // REGISTRATION
+    // =========================================================
 
     public async Task<AuthResponse> RegisterAsync(
         RegisterRequest request,
@@ -43,56 +52,83 @@ public class AuthService : IAuthService
             request,
             cancellationToken);
 
-        await using var transaction =
-            await _context.Database.BeginTransactionAsync(
+        var email = request.Email.Trim();
+
+        // Obtain the execution strategy configured for SQL Server.
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        // EF Core may retry this delegate after a transient failure.
+        return await strategy.ExecuteAsync(async () =>
+        {
+            // Every attempt receives a fresh DbContext and UserManager.
+            await using var scope = _scopeFactory.CreateAsyncScope();
+
+            var context = scope.ServiceProvider
+                .GetRequiredService<CardShopDbContext>();
+
+            var userManager = scope.ServiceProvider
+                .GetRequiredService<UserManager<ApplicationUser>>();
+
+            var tokenService = scope.ServiceProvider
+                .GetRequiredService<ITokenService>();
+
+            await using var transaction =
+                await context.Database.BeginTransactionAsync(
+                    cancellationToken);
+
+            var user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email
+            };
+
+            var createResult = await userManager.CreateAsync(
+                user,
+                request.Password);
+
+            if (!createResult.Succeeded)
+            {
+                throw new RegistrationException(
+                    createResult.Errors.Select(
+                        error => error.Description));
+            }
+
+            var roleResult = await userManager.AddToRoleAsync(
+                user,
+                RoleNames.Customer);
+
+            if (!roleResult.Succeeded)
+            {
+                throw new RegistrationException(
+                    roleResult.Errors.Select(
+                        error => error.Description));
+            }
+
+            // Create the customer's permanent cart.
+            context.Carts.Add(new Cart
+            {
+                UserId = user.Id
+            });
+
+            await context.SaveChangesAsync(
                 cancellationToken);
 
-        var user = new ApplicationUser
-        {
-            UserName = request.Email.Trim(),
-            Email = request.Email.Trim()
-        };
+            // Commit user creation, role assignment, and cart.
+            await transaction.CommitAsync(
+                cancellationToken);
 
-        var createResult = await _userManager.CreateAsync(
-            user,
-            request.Password);
+            var roles = await userManager.GetRolesAsync(user);
 
-        if (!createResult.Succeeded)
-        {
-            throw new RegistrationException(
-                createResult.Errors.Select(e => e.Description));
-        }
-
-        var roleResult = await _userManager.AddToRoleAsync(
-            user,
-            RoleNames.Customer);
-
-        if (!roleResult.Succeeded)
-        {
-            throw new RegistrationException(
-                roleResult.Errors.Select(e => e.Description));
-        }
-
-        // Create the customer's permanent empty cart.
-        var cart = new Cart
-        {
-            UserId = user.Id
-        };
-
-        _context.Carts.Add(cart);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        // Commit user creation, role assignment and cart together.
-        await transaction.CommitAsync(cancellationToken);
-
-        var roles = await _userManager.GetRolesAsync(user);
-
-        return _tokenService.GenerateToken(
-            user.Id,
-            user.Email!,
-            roles);
+            return tokenService.GenerateToken(
+                user.Id,
+                user.Email!,
+                roles);
+        });
     }
+
+    // =========================================================
+    // LOGIN
+    // =========================================================
 
     public async Task<AuthResponse?> LoginAsync(
         LoginRequest request,

@@ -10,6 +10,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -22,15 +23,15 @@ public class AuthServiceTests
     private readonly Mock<UserManager<ApplicationUser>> _userManagerMock;
     private readonly Mock<SignInManager<ApplicationUser>> _signInManagerMock;
     private readonly Mock<ITokenService> _tokenServiceMock;
+    private readonly Mock<IServiceScopeFactory> _scopeFactoryMock;
 
     private readonly AuthService _service;
 
     public AuthServiceTests()
     {
-        // Mock the Identity user store.
+        // Mock Identity's user store.
         var userStoreMock = new Mock<IUserStore<ApplicationUser>>();
 
-        // UserManager requires an IUserStore.
         _userManagerMock = new Mock<UserManager<ApplicationUser>>(
             userStoreMock.Object,
             Options.Create(new IdentityOptions()),
@@ -42,7 +43,7 @@ public class AuthServiceTests
             Mock.Of<IServiceProvider>(),
             Mock.Of<ILogger<UserManager<ApplicationUser>>>());
 
-        // SignInManager requires UserManager and HTTP-related services.
+        // Mock SignInManager.
         _signInManagerMock = new Mock<SignInManager<ApplicationUser>>(
             _userManagerMock.Object,
             Mock.Of<IHttpContextAccessor>(),
@@ -53,9 +54,9 @@ public class AuthServiceTests
             Mock.Of<IUserConfirmation<ApplicationUser>>());
 
         _tokenServiceMock = new Mock<ITokenService>();
+        _scopeFactoryMock = new Mock<IServiceScopeFactory>();
 
-        // LoginAsync does not access DbContext.
-        // We still provide one because the constructor requires it.
+        // LoginAsync doesn't use the database directly.
         var dbOptions = new DbContextOptionsBuilder<CardShopDbContext>()
             .Options;
 
@@ -67,7 +68,8 @@ public class AuthServiceTests
             _tokenServiceMock.Object,
             new RegisterRequestValidator(),
             new LoginRequestValidator(),
-            context);
+            context,
+            _scopeFactoryMock.Object);
     }
 
     private static LoginRequest ValidLoginRequest() => new()
@@ -90,11 +92,13 @@ public class AuthServiceTests
     [Fact]
     public async Task Login_WithValidCredentials_ShouldReturnAuthResponse()
     {
-        // Arrange
         var request = ValidLoginRequest();
         var user = ExistingUser();
 
-        var roles = new List<string> { RoleNames.Customer };
+        var roles = new List<string>
+        {
+            RoleNames.Customer
+        };
 
         var expectedResponse = new AuthResponse
         {
@@ -127,10 +131,8 @@ public class AuthServiceTests
                 roles))
             .Returns(expectedResponse);
 
-        // Act
         var result = await _service.LoginAsync(request);
 
-        // Assert
         result.Should().NotBeNull();
         result!.AccessToken.Should().Be("test-jwt-token");
         result.UserId.Should().Be(user.Id);
@@ -146,23 +148,20 @@ public class AuthServiceTests
     }
 
     // =========================================================
-    // USER DOES NOT EXIST
+    // NONEXISTENT USER
     // =========================================================
 
     [Fact]
     public async Task Login_WithNonexistentUser_ShouldReturnNull()
     {
-        // Arrange
         var request = ValidLoginRequest();
 
         _userManagerMock
             .Setup(manager => manager.FindByEmailAsync(request.Email))
             .ReturnsAsync((ApplicationUser?)null);
 
-        // Act
         var result = await _service.LoginAsync(request);
 
-        // Assert
         result.Should().BeNull();
 
         _signInManagerMock.Verify(
@@ -187,7 +186,6 @@ public class AuthServiceTests
     [Fact]
     public async Task Login_WithIncorrectPassword_ShouldReturnNull()
     {
-        // Arrange
         var request = ValidLoginRequest();
         var user = ExistingUser();
 
@@ -202,10 +200,8 @@ public class AuthServiceTests
                 true))
             .ReturnsAsync(SignInResult.Failed);
 
-        // Act
         var result = await _service.LoginAsync(request);
 
-        // Assert
         result.Should().BeNull();
 
         _tokenServiceMock.Verify(
@@ -223,7 +219,6 @@ public class AuthServiceTests
     [Fact]
     public async Task Login_WithLockedAccount_ShouldReturnNull()
     {
-        // Arrange
         var request = ValidLoginRequest();
         var user = ExistingUser();
 
@@ -238,10 +233,8 @@ public class AuthServiceTests
                 true))
             .ReturnsAsync(SignInResult.LockedOut);
 
-        // Act
         var result = await _service.LoginAsync(request);
 
-        // Assert
         result.Should().BeNull();
 
         _tokenServiceMock.Verify(
@@ -263,17 +256,12 @@ public class AuthServiceTests
     public async Task Login_WithInvalidEmail_ShouldThrowValidationException(
         string email)
     {
-        // Arrange
         var request = ValidLoginRequest();
         request.Email = email;
 
-        // Act
-        Func<Task> act = async () =>
-            await _service.LoginAsync(request);
+        Func<Task> act = () => _service.LoginAsync(request);
 
-        // Assert
-        await act.Should()
-            .ThrowAsync<ValidationException>();
+        await act.Should().ThrowAsync<ValidationException>();
 
         _userManagerMock.Verify(
             manager => manager.FindByEmailAsync(
@@ -291,17 +279,12 @@ public class AuthServiceTests
     public async Task Login_WithEmptyPassword_ShouldThrowValidationException(
         string? password)
     {
-        // Arrange
         var request = ValidLoginRequest();
         request.Password = password!;
 
-        // Act
-        Func<Task> act = async () =>
-            await _service.LoginAsync(request);
+        Func<Task> act = () => _service.LoginAsync(request);
 
-        // Assert
-        await act.Should()
-            .ThrowAsync<ValidationException>();
+        await act.Should().ThrowAsync<ValidationException>();
 
         _userManagerMock.Verify(
             manager => manager.FindByEmailAsync(

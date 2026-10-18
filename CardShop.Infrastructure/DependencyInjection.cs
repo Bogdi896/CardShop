@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using CardShop.Infrastructure.Services;
 
 namespace CardShop.Infrastructure
 {
@@ -23,7 +24,15 @@ namespace CardShop.Infrastructure
                     "Connection string 'CardShopDatabase' was not found.");
 
             services.AddDbContext<CardShopDbContext>(options =>
-                options.UseSqlServer(connectionString));
+    options.UseSqlServer(
+        connectionString,
+        sqlOptions =>
+        {
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(2),
+                errorNumbersToAdd: new[] { 1205 });
+        }));
 
             services.AddDataProtection();
 
@@ -51,6 +60,8 @@ namespace CardShop.Infrastructure
             services.AddScoped<ITokenService, TokenService>();
 
             services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<ICheckoutExecutor, CheckoutExecutor>();
+            services.AddScoped<ICartOperationExecutor, CartOperationExecutor>();
             services.AddScoped<IProductRepository, ProductRepository>();
             services.AddScoped<ICartRepository, CartRepository>();
             services.AddScoped<IOrderRepository, OrderRepository>();
