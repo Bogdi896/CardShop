@@ -228,6 +228,9 @@ namespace CardShop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("RegistrationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
 
@@ -247,6 +250,10 @@ namespace CardShop.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
+
+                    b.HasIndex("RegistrationId")
+                        .IsUnique()
+                        .HasFilter("[RegistrationId] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
                 });

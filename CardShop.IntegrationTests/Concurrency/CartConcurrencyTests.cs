@@ -1,4 +1,4 @@
-﻿
+
 using System.Data;
 using System.Net;
 using System.Net.Http.Headers;
@@ -51,6 +51,7 @@ public class CartConcurrencyTests
             "/auth/register",
             new RegisterRequest
             {
+                RegistrationId = Guid.NewGuid(),
                 Email = email,
                 Password = "CardShop123!",
                 ConfirmPassword = "CardShop123!"

@@ -13,6 +13,7 @@ public class AuthValidatorTests
 
     private static RegisterRequest ValidRegisterRequest() => new()
     {
+        RegistrationId = Guid.NewGuid(),
         Email = "customer@example.com",
         Password = "CardShop123!",
         ConfirmPassword = "CardShop123!"
@@ -36,6 +37,19 @@ public class AuthValidatorTests
         var result = _registerValidator.Validate(request);
 
         result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Register_WithEmptyRegistrationId_ShouldFail()
+    {
+        var request = ValidRegisterRequest();
+        request.RegistrationId = Guid.Empty;
+
+        var result = _registerValidator.Validate(request);
+
+        result.Errors.Should().Contain(
+            error => error.PropertyName ==
+                nameof(request.RegistrationId));
     }
 
     [Theory]
@@ -91,7 +105,8 @@ public class AuthValidatorTests
         var result = _registerValidator.Validate(request);
 
         result.Errors.Should().Contain(
-            error => error.PropertyName == nameof(request.ConfirmPassword));
+            error => error.PropertyName ==
+                nameof(request.ConfirmPassword));
     }
 
     [Fact]

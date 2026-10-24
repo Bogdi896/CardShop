@@ -1,4 +1,4 @@
-﻿
+
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -41,6 +41,7 @@ public class AuthorizationTests
             "/auth/register",
             new RegisterRequest
             {
+                RegistrationId = Guid.NewGuid(),
                 Email = "customer@example.com",
                 Password = "CardShop123!",
                 ConfirmPassword = "CardShop123!"

@@ -53,14 +53,31 @@ public class AuthService : IAuthService
             cancellationToken);
 
         var email = request.Email.Trim();
+        var registrationId = request.RegistrationId;
 
-        // Obtain the execution strategy configured for SQL Server.
+        // Check for an already completed registration.
+        // Do not issue a JWT based on RegistrationId alone.
+        var existingRegistration = await _context.Users
+            .AsNoTracking()
+            .AnyAsync(
+                user => user.RegistrationId == registrationId,
+                cancellationToken);
+
+        if (existingRegistration)
+        {
+            throw new RegistrationException(new[]
+            {
+                "This registration was already completed. Please log in."
+            });
+        }
+
         var strategy = _context.Database.CreateExecutionStrategy();
 
-        // EF Core may retry this delegate after a transient failure.
         return await strategy.ExecuteAsync(async () =>
         {
-            // Every attempt receives a fresh DbContext and UserManager.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Each retry gets fresh EF Core and Identity services.
             await using var scope = _scopeFactory.CreateAsyncScope();
 
             var context = scope.ServiceProvider
@@ -72,6 +89,21 @@ public class AuthService : IAuthService
             var tokenService = scope.ServiceProvider
                 .GetRequiredService<ITokenService>();
 
+            // Recheck because another attempt may have completed.
+            var alreadyRegistered = await context.Users
+                .AsNoTracking()
+                .AnyAsync(
+                    user => user.RegistrationId == registrationId,
+                    cancellationToken);
+
+            if (alreadyRegistered)
+            {
+                throw new RegistrationException(new[]
+                {
+                    "This registration was already completed. Please log in."
+                });
+            }
+
             await using var transaction =
                 await context.Database.BeginTransactionAsync(
                     cancellationToken);
@@ -79,7 +111,8 @@ public class AuthService : IAuthService
             var user = new ApplicationUser
             {
                 UserName = email,
-                Email = email
+                Email = email,
+                RegistrationId = registrationId
             };
 
             var createResult = await userManager.CreateAsync(
@@ -104,18 +137,57 @@ public class AuthService : IAuthService
                         error => error.Description));
             }
 
-            // Create the customer's permanent cart.
+            // Each user receives one permanent empty cart.
             context.Carts.Add(new Cart
             {
                 UserId = user.Id
             });
 
-            await context.SaveChangesAsync(
-                cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
 
-            // Commit user creation, role assignment, and cart.
-            await transaction.CommitAsync(
-                cancellationToken);
+            try
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch (Exception exception) when (
+                !cancellationToken.IsCancellationRequested &&
+                CardShop.Infrastructure.Services
+                    .TransactionFailureClassifier
+                    .IsPotentialCommitFailure(exception))
+            {
+                // The commit may have succeeded even if the
+                // application did not receive confirmation.
+                await using var verificationScope =
+                    _scopeFactory.CreateAsyncScope();
+
+                var verificationContext =
+                    verificationScope.ServiceProvider
+                        .GetRequiredService<CardShopDbContext>();
+
+                var committed = await verificationContext.Users
+                    .AsNoTracking()
+                    .AnyAsync(
+                        candidate =>
+                            candidate.Id == user.Id &&
+                            candidate.RegistrationId == registrationId,
+                        cancellationToken);
+
+                if (committed)
+                {
+                    // Do not generate a JWT merely from the
+                    // registration identifier.
+                    throw new RegistrationException(new[]
+                    {
+                        "Registration completed, but confirmation was lost. " +
+                        "Please log in."
+                    });
+                }
+
+                // No committed registration was found.
+                // Let the execution strategy decide whether
+                // the original failure should be retried.
+                throw;
+            }
 
             var roles = await userManager.GetRolesAsync(user);
 
