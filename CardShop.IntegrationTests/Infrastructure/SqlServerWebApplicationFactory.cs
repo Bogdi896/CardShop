@@ -18,10 +18,35 @@ public class SqlServerWebApplicationFactory
     private const string TestDatabaseName = "CardShopConcurrencyTests";
 
     private readonly string _connectionString =
-        $@"Server=(localdb)\MSSQLLocalDB;
-           Database={TestDatabaseName};
-           Trusted_Connection=True;
-           TrustServerCertificate=True";
+    GetTestConnectionString();
+
+    private static string GetTestConnectionString()
+    {
+        var configuredConnectionString =
+            Environment.GetEnvironmentVariable(
+                "CARDSHOP_TEST_SQLSERVER");
+
+        var connectionString =
+            !string.IsNullOrWhiteSpace(configuredConnectionString)
+                ? configuredConnectionString
+                : $@"Server=(localdb)\MSSQLLocalDB;
+                 Database={TestDatabaseName};
+                 Trusted_Connection=True;
+                 TrustServerCertificate=True";
+
+        var builder = new SqlConnectionStringBuilder(connectionString);
+
+        if (!string.Equals(
+            builder.InitialCatalog,
+            TestDatabaseName,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Integration tests must use '{TestDatabaseName}'.");
+        }
+
+        return builder.ConnectionString;
+    }
 
     private readonly string _jwtSecret =
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));

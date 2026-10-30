@@ -17,8 +17,30 @@ name: CardShop CI
 
 jobs:
   build-and-test:
-    name: Build and Unit Test
+    name: Build and Test
     runs-on: ubuntu-latest
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ secrets.CI_SQL_PASSWORD }}
+          MSSQL_PID: "Developer"
+
+        ports:
+          - 1433:1433
+
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' -b"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=40s
+
+    env:
+      CARDSHOP_TEST_SQLSERVER: "Server=127.0.0.1,1433;Database=CardShopConcurrencyTests;User Id=sa;Password=${{ secrets.CI_SQL_PASSWORD }};TrustServerCertificate=True"
 
     steps:
       - name: Checkout repository
@@ -38,6 +60,13 @@ jobs:
       - name: Run unit tests
         run: >
           dotnet test CardShop.UnitTests/CardShop.UnitTests.csproj
+          --configuration Release
+          --no-build
+          --verbosity normal
+
+      - name: Run integration tests
+        run: >
+          dotnet test CardShop.IntegrationTests/CardShop.IntegrationTests.csproj
           --configuration Release
           --no-build
           --verbosity normal
