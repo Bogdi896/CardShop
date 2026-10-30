@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/TestResults/
+.git/
+.gitignore
+**/appsettings.Development.json
+**/secrets.json
+**/*.user
+**/*.suo
