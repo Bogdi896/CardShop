@@ -191,21 +191,6 @@ public class CartConcurrencyTests
         return cart!;
     }
 
-    private static async Task<int> GetCartIdAsync(
-        SqlServerWebApplicationFactory factory,
-        string userId)
-    {
-        using var scope = factory.Services.CreateScope();
-
-        var context = scope.ServiceProvider
-            .GetRequiredService<CardShopDbContext>();
-
-        return await context.Carts
-            .Where(cart => cart.UserId == userId)
-            .Select(cart => cart.Id)
-            .SingleAsync();
-    }
-
     // =========================================================
     // TEST 1: TWO SIMULTANEOUS ADDITIONS
     // =========================================================
@@ -267,8 +252,6 @@ public class CartConcurrencyTests
         var (client, userId) = await CreateCustomerAsync(factory);
         using var customer = client;
 
-        var cartId = await GetCartIdAsync(factory, userId);
-
         await using var scope = factory.Services.CreateAsyncScope();
 
         var context = scope.ServiceProvider
@@ -278,11 +261,10 @@ public class CartConcurrencyTests
             await context.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable);
 
-        // Hold an exclusive lock on this customer's cart.
+        // Match the application lock, including the UserId index access path.
         await context.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE Carts
-               SET UserId = UserId
-               WHERE Id = {cartId}");
+            $@"SELECT * FROM Carts WITH (UPDLOCK, HOLDLOCK)
+               WHERE UserId = {userId}");
 
         // Start a cart modification while the lock is held.
         var addTask = AddItemAsync(
@@ -344,8 +326,6 @@ public class CartConcurrencyTests
             response.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        var cartId = await GetCartIdAsync(factory, userId);
-
         await using var scope = factory.Services.CreateAsyncScope();
 
         var context = scope.ServiceProvider
@@ -355,11 +335,19 @@ public class CartConcurrencyTests
             await context.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable);
 
-        // Hold the cart row lock.
+        // Match the application lock, including the UserId index access path.
         await context.Database.ExecuteSqlInterpolatedAsync(
-            $@"UPDATE Carts
-               SET UserId = UserId
-               WHERE Id = {cartId}");
+            $@"SELECT * FROM Carts WITH (UPDLOCK, HOLDLOCK)
+               WHERE UserId = {userId}");
+
+        // Change the quantity without committing it yet.
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $@"UPDATE CartItems
+               SET Quantity = 5
+               WHERE CartId = (SELECT Id FROM Carts WHERE UserId = {userId})
+                 AND ProductId = {product.Id}");
+
+        var committed = false;
 
         var checkoutTask = customer.PostAsJsonAsync(
             "/orders/checkout",
@@ -374,10 +362,16 @@ public class CartConcurrencyTests
 
             checkoutTask.IsCompleted.Should().BeFalse(
                 "checkout should wait for the cart lock");
+
+            await transaction.CommitAsync();
+            committed = true;
         }
         finally
         {
-            await transaction.RollbackAsync();
+            if (!committed)
+            {
+                await transaction.RollbackAsync();
+            }
         }
 
         using var checkoutResponse = await checkoutTask;
@@ -394,7 +388,7 @@ public class CartConcurrencyTests
 
         order.Should().NotBeNull();
         order!.Items.Should().ContainSingle();
-        order.Items.Single().Quantity.Should().Be(2);
+        order.Items.Single().Quantity.Should().Be(5);
 
         var cart = await GetCartAsync(customer);
 
