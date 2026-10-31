@@ -1,5 +1,5 @@
-﻿
-using CardShop.Domain.Models;
+﻿using CardShop.Domain.Models;
+using CardShop.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -19,6 +19,11 @@ namespace CardShop.Infrastructure.Persistence.Configurations
 
             builder.HasIndex(cart => cart.UserId)
                 .IsUnique();
+
+            builder.HasOne<ApplicationUser>()
+                .WithOne()
+                .HasForeignKey<Cart>(cart => cart.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.HasMany(cart => cart.Items)
                 .WithOne(cartItem => cartItem.Cart)

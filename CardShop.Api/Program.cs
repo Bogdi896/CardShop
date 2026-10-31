@@ -1,22 +1,27 @@
-using CardShop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using CardShop.Application;
 using CardShop.Api;
 using CardShop.Infrastructure;
+using CardShop.Infrastructure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddApiServices();
+builder.Services.AddApiServices(builder.Configuration);
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
-app.UseExceptionHandler();
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    await IdentitySeeder.SeedAsync(
+        app.Services,
+        app.Configuration,
+        app.Environment);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -25,8 +30,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseExceptionHandler();
+
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

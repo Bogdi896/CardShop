@@ -1,9 +1,14 @@
 ﻿using CardShop.Application.Interfaces.Repositories;
+using CardShop.Application.Interfaces.Services;
+using CardShop.Infrastructure.Authentication;
+using CardShop.Infrastructure.Identity;
 using CardShop.Infrastructure.Persistence;
 using CardShop.Infrastructure.Repositories;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using CardShop.Infrastructure.Services;
 
 namespace CardShop.Infrastructure
 {
@@ -19,9 +24,47 @@ namespace CardShop.Infrastructure
                     "Connection string 'CardShopDatabase' was not found.");
 
             services.AddDbContext<CardShopDbContext>(options =>
-                options.UseSqlServer(connectionString));
+    options.UseSqlServer(
+        connectionString,
+        sqlOptions =>
+        {
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3,
+                maxRetryDelay: TimeSpan.FromSeconds(2),
+                errorNumbersToAdd: new[] { 1205 });
+        }));
 
+            services.AddDataProtection();
+
+            services.AddIdentityCore<ApplicationUser>(options =>
+            {
+                options.Password.RequireDigit = true;
+                options.Password.RequireLowercase = true;
+                options.Password.RequireUppercase = true;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequiredLength = 6;
+
+                options.User.RequireUniqueEmail = true;
+
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.AllowedForNewUsers = true;
+            })
+                .AddRoles<IdentityRole>()
+                .AddEntityFrameworkStores<CardShopDbContext>()
+                .AddSignInManager()
+                .AddDefaultTokenProviders();
+            services.Configure<JwtSettings>(
+    configuration.GetSection(JwtSettings.SectionName));
+
+            services.AddScoped<ITokenService, TokenService>();
+
+            services.AddScoped<IAuthService, AuthService>();
+            services.AddScoped<ICheckoutExecutor, CheckoutExecutor>();
+            services.AddScoped<ICartOperationExecutor, CartOperationExecutor>();
             services.AddScoped<IProductRepository, ProductRepository>();
+            services.AddScoped<ICartRepository, CartRepository>();
+            services.AddScoped<IOrderRepository, OrderRepository>();
 
             return services;
         }

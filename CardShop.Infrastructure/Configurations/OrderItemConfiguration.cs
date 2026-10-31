@@ -19,11 +19,25 @@ namespace CardShop.Infrastructure.Persistence.Configurations
             builder.Property(item => item.UnitPrice)
                 .HasPrecision(18, 2)
                 .IsRequired();
+            builder.Property(item => item.ProductName)
+    .HasMaxLength(200)
+    .IsRequired();
 
             builder.HasOne(item => item.Product)
                 .WithMany()
                 .HasForeignKey(item => item.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_OrderItems_Quantity_Positive",
+                    "[Quantity] > 0");
+
+                table.HasCheckConstraint(
+                    "CK_OrderItems_UnitPrice_NonNegative",
+                    "[UnitPrice] >= 0");
+            });
         }
     }
 }

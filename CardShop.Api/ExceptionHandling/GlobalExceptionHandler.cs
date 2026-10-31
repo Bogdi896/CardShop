@@ -27,16 +27,20 @@ namespace CardShop.Api.ExceptionHandling
                     .GroupBy(error => error.PropertyName)
                     .ToDictionary(
                         group => group.Key,
-                        group => group
-                            .Select(error => error.ErrorMessage)
-                            .Distinct()
-                            .ToArray());
+                        group => group.Select(error => error.ErrorMessage).ToArray());
 
-                problem = new ValidationProblemDetails(errors)
-                {
-                    Status = StatusCodes.Status400BadRequest,
-                    Title = "One or more validation errors occurred."
-                };
+                httpContext.Response.StatusCode =
+                    StatusCodes.Status400BadRequest;
+
+                await httpContext.Response.WriteAsJsonAsync(
+                    new ValidationProblemDetails(errors)
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Validation failed."
+                    },
+                    cancellationToken);
+
+                return true;
             }
             else
             {
@@ -54,6 +58,7 @@ namespace CardShop.Api.ExceptionHandling
                     Detail = "Please try again later."
                 };
             }
+
 
             problem.Instance = httpContext.Request.Path.Value;
             problem.Extensions["traceId"] = httpContext.TraceIdentifier;

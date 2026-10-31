@@ -1,12 +1,12 @@
 ﻿using CardShop.Application.DTOs.Products;
 using FluentValidation;
 
-namespace CardShop.Application.Validators.Products
+namespace CardShop.Application.Validators.Product
 {
-    public class CreateProductRequestValidator
-        : AbstractValidator<CreateProductRequest>
+    public class UpdateProductRequestValidator
+        : AbstractValidator<UpdateProductRequest>
     {
-        public CreateProductRequestValidator()
+        public UpdateProductRequestValidator()
         {
             RuleFor(request => request.Name)
                 .NotEmpty()
@@ -22,9 +22,6 @@ namespace CardShop.Application.Validators.Products
             RuleFor(request => request.Price)
                 .GreaterThan(0)
                 .PrecisionScale(18, 2, true);
-
-            RuleFor(request => request.AvailableQuantity)
-                .GreaterThanOrEqualTo(0);
         }
     }
 }
